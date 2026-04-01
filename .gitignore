@@ -1,11 +1,11 @@
-# ── Secrets — never commit these ─────────────────────────────────────────────
+# ── Secret stuff ─────────────────────────────────────────────
 .env
 Alert_Config
 
-# ── Auto-generated log files — changes every run, not useful to track ────────
+# ── Auto-generated log files ────────
 incident_reports/
 
-# ── Python cache files — not useful to track ─────────────────────────────────
+# ── Python cache files ─────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
