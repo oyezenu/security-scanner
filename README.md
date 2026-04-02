@@ -8,7 +8,7 @@ An automated system health monitor built in Python. Runs continuously in the bac
 
 - 🔁 **Continuous monitoring** — scans every 30 seconds, automatically
 - 🧠 **Top 5 memory consumers** — ranked by physical RAM (RSS) usage
-- 🌐 **Network I/O snapshot** — cumulative bytes sent/received since boot
+- 🌐 **Network I/O tracking** — per-scan deltas plus cumulative totals since boot
 - 🖥️ **Desktop notifications** — Windows/macOS/Linux pop-up alerts via `plyer`
 - 📧 **Email alerts** — sends a real email when memory thresholds are breached
 - ⏱️ **Alert cooldown** — prevents notification spam for ongoing issues
@@ -69,7 +69,7 @@ EMAIL_RECIPIENT=your_email@gmail.com
 ### 4. Run the scanner
 
 ```bash
-python security.scan.py
+python security_scan.py
 ```
 
 Press `Ctrl+C` to stop.
@@ -95,9 +95,11 @@ Press `Ctrl+C` to stop.
   [✓] Desktop notification sent.
   [✓] Email alert sent to your_email@gmail.com.
 
-  Network I/O (cumulative since boot):
-    Sent:      2,340.1 MB
-    Received:  8,901.4 MB
+  Network I/O:
+    Sent     (this interval):  1.23 MB
+    Received (this interval):  4.87 MB
+    Sent     (since boot):     2,340.1 MB
+    Received (since boot):     8,901.4 MB
 
   Next scan in 30s  —  Press Ctrl+C to stop.
 ```
@@ -108,8 +110,9 @@ Press `Ctrl+C` to stop.
 
 ```
 security-scanner/
-├── security.scan.py     # Main scanner script
+├── security_scan.py     # Main scanner script
 ├── .env.example         # Config template
+├── requirements.txt     # Python dependencies
 ├── .gitignore           # Keeps secrets and logs out of Git
 └── incident_reports/    # Locally auto-generated session logs
 ```

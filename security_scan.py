@@ -6,7 +6,7 @@ processes. Fires desktop and/or email alerts when memory thresholds are breached
 Logs all incidents to a per-session report file.
 
 Usage:
-    python security.scan.py
+    python security_scan.py
 
 Configuration:
     Copy .env.example → .env and fill in your credentials to enable alerts.
@@ -79,7 +79,14 @@ EMAIL_SENDER    = os.getenv("EMAIL_SENDER",    "")
 EMAIL_PASSWORD  = os.getenv("EMAIL_PASSWORD",  "")  # Use a Gmail App Password, not your real password!
 EMAIL_RECIPIENT = os.getenv("EMAIL_RECIPIENT", "")
 SMTP_HOST       = os.getenv("SMTP_HOST",       "smtp.gmail.com")
-SMTP_PORT       = int(os.getenv("SMTP_PORT",   "587"))
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+except ValueError:
+    print(
+        "[Config error] SMTP_PORT must be an integer. Defaulting to 587.",
+        file=sys.stderr,
+    )
+    SMTP_PORT = 587
 
 # Set ENABLE_EMAIL_ALERTS=true and/or ENABLE_DESKTOP_ALERTS=true in .env to toggle.
 ENABLE_EMAIL_ALERTS   = os.getenv("ENABLE_EMAIL_ALERTS",   "false").lower() == "true"
@@ -87,6 +94,17 @@ ENABLE_DESKTOP_ALERTS = os.getenv("ENABLE_DESKTOP_ALERTS", "true").lower()  == "
 
 # Minimum minutes to wait before repeating an alert — prevents notification spam.
 ALERT_COOLDOWN_MINUTES = int(os.getenv("ALERT_COOLDOWN_MINUTES", "10"))
+
+# Comma-separated process names that should never trigger an alert.
+# Common safe Windows system processes are excluded by default.
+# Override via EXCLUDED_PROCESSES=name1,name2 in your .env file.
+EXCLUDED_PROCESSES: set[str] = {
+    name.strip()
+    for name in os.getenv(
+        "EXCLUDED_PROCESSES", "MemCompression,Registry,System,Idle"
+    ).split(",")
+    if name.strip()
+}
 
 # Internal tracker: when was the last alert fired? (None = never)
 _last_alert_time: datetime | None = None
@@ -149,8 +167,13 @@ def append_incident_report(
 # ── Alert functions ───────────────────────────────────────────────────────────
 
 def send_desktop_notification(title: str, message: str) -> None:
-   
+    """
+    Fire a desktop pop-up notification via plyer.
 
+    Args:
+        title:   The notification title (bold heading).
+        message: The body text shown in the notification pop-up.
+    """
     try:
         from plyer import notification
         notification.notify(
@@ -251,8 +274,25 @@ def trigger_alerts(offenders: list[tuple[int, str, int]], scan_count: int) -> No
 
 # ── Main scan loop ────────────────────────────────────────────────────────────
 
-def run_scan(psutil_module, scan_count: int, session_log_path: Path) -> None:
-    """Execute one full scan: banner, hostname, top 5 processes, health status, alerts."""
+def run_scan(
+    psutil_module,
+    scan_count: int,
+    session_log_path: Path,
+    prev_net: tuple[float, float],
+) -> tuple[float, float]:
+    """
+    Execute one full scan: banner, hostname, top 5 processes, health status, alerts.
+
+    Args:
+        psutil_module:    The imported psutil module.
+        scan_count:       The current scan number (1-based).
+        session_log_path: Path to the session's incident log file.
+        prev_net:         (sent_mb, recv_mb) from the previous scan, used to
+                          compute per-interval network deltas.
+
+    Returns:
+        The current (sent_mb, recv_mb) totals to be passed as prev_net next scan.
+    """
     print("=" * 52)
     print(f"  SECURITY SCANNER  |  Scan #{scan_count:,}")
     print("=" * 52)
@@ -289,8 +329,12 @@ def run_scan(psutil_module, scan_count: int, session_log_path: Path) -> None:
 
     print()
 
-    # Check for threshold breaches and fire alerts if needed.
-    offenders = [(rss, name, pid) for rss, name, pid in top if rss > threshold_bytes]
+    # Check ALL processes (not just top 5) for threshold breaches, excluding known-safe processes.
+    offenders = [
+        (rss, name, pid)
+        for rss, name, pid in rows
+        if rss > threshold_bytes and name not in EXCLUDED_PROCESSES
+    ]
     if offenders:
         print("  ⚠️  WARNING — HIGH MEMORY USAGE DETECTED")
         trigger_alerts(offenders, scan_count)
@@ -299,11 +343,16 @@ def run_scan(psutil_module, scan_count: int, session_log_path: Path) -> None:
 
     print()
     sent_mb, recv_mb = network_totals_mb(psutil_module)
-    print("  Network I/O (cumulative since boot):")
-    print(f"    Sent:      {sent_mb:,.1f} MB")
-    print(f"    Received:  {recv_mb:,.1f} MB")
+    delta_sent = sent_mb - prev_net[0]
+    delta_recv = recv_mb - prev_net[1]
+    print("  Network I/O:")
+    print(f"    Sent     (this interval):  {delta_sent:,.2f} MB")
+    print(f"    Received (this interval):  {delta_recv:,.2f} MB")
+    print(f"    Sent     (since boot):     {sent_mb:,.1f} MB")
+    print(f"    Received (since boot):     {recv_mb:,.1f} MB")
     print()
     print(f"  Next scan in {SCAN_INTERVAL_SECONDS}s  —  Press Ctrl+C to stop.")
+    return sent_mb, recv_mb
 
 
 def main() -> None:
@@ -331,10 +380,11 @@ def main() -> None:
         f.write("---\n")
 
     scan_count = 0
+    prev_net = (sent_mb, recv_mb)   # baseline for first-scan delta
     while True:
         scan_count += 1
         clear_screen()
-        run_scan(psutil, scan_count, session_log_path)
+        prev_net = run_scan(psutil, scan_count, session_log_path, prev_net)
         time.sleep(SCAN_INTERVAL_SECONDS)
 
 

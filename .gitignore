@@ -1,6 +1,5 @@
 # ── Secret stuff ─────────────────────────────────────────────
 .env
-Alert_Config
 
 # ── Auto-generated log files ────────
 incident_reports/

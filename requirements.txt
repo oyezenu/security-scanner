@@ -1,0 +1,4 @@
+psutil>=5.9.0
+python-dotenv>=1.0.0
+plyer>=2.1.0
+tzdata>=2024.1   # Windows only — safe to install on all platforms
